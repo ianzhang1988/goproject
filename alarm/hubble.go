@@ -43,7 +43,7 @@ func NewSendToHubbleFunc(config HubbleConfig) SendAlarmFunc {
 				status = "PROBLEM"
 			}
 
-			msg := AlarmMsg{Group: "IPES", Triggername: event.Name, Status: status, Alertlevel: "P2", Value: event.Value, Endpoint: hostname}
+			msg := AlarmMsg{Group: "Test", Triggername: event.Name, Status: status, Alertlevel: "P2", Value: event.Value, Endpoint: hostname}
 			return doHubbleSend(config.ServerUrl, config.UserToken, &msg)
 		})
 	}
