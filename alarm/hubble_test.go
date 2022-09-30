@@ -6,11 +6,11 @@ import (
 )
 
 func TestStuff(t *testing.T) {
-	a := AlarmMsg{Group: "IPES", Triggername: "test", Status: "OK", Alertlevel: "P3", Value: "something is wrong", Pushedtags: Tags{Test: "hi"}}
+	a := AlarmMsg{Group: "test", Triggername: "test", Status: "OK", Alertlevel: "P3", Value: "something is wrong", Pushedtags: Tags{Test: "hi"}}
 	data, _ := json.Marshal(a)
 	t.Log("alarm: ", string(data))
 
-	b := AlarmMsg{Group: "IPES", Triggername: "test", Status: "OK", Alertlevel: "P3", Value: "something is wrong", Pushedtags: map[string]string{"test": "hello"}}
+	b := AlarmMsg{Group: "test", Triggername: "test", Status: "OK", Alertlevel: "P3", Value: "something is wrong", Pushedtags: map[string]string{"test": "hello"}}
 	data, _ = json.Marshal(b)
 	t.Log("alarm: ", string(data))
 

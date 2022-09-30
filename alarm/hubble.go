@@ -29,8 +29,6 @@ func SendRetry(n int, interval time.Duration, f func() error) {
 }
 
 func NewSendToHubbleFunc(config HubbleConfig) SendAlarmFunc {
-	// userToken := "e0cf0"
-
 	hostname, err := os.Hostname()
 	if err != nil {
 		hostname = ""
