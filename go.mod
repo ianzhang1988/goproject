@@ -3,7 +3,22 @@ module goproject
 go 1.16
 
 require (
-	github.com/Luzifer/go-openssl/v4 v4.1.0 // indirect
+	github.com/Luzifer/go-openssl/v4 v4.1.0
 	github.com/eclipse/paho.mqtt.golang v1.3.5
-	github.com/spacemonkeygo/openssl v0.0.0-20181017203307-c2dcc5cca94a // indirect
+	github.com/gogo/protobuf v1.3.2
+	github.com/google/uuid v1.3.0
+	github.com/ipfs/go-datastore v0.6.0
+	github.com/ipfs/go-log/v2 v2.5.1
+	github.com/libp2p/go-libp2p v0.23.2
+	github.com/libp2p/go-libp2p-core v0.20.1
+	github.com/libp2p/go-libp2p-gostream v0.5.0
+	github.com/libp2p/go-libp2p-http v0.4.0
+	github.com/libp2p/go-libp2p-kad-dht v0.18.0
+	github.com/libp2p/go-libp2p/examples v0.0.0-20220929192648-7828f3e0797e
+	github.com/multiformats/go-multiaddr v0.7.0
+	github.com/spacemonkeygo/openssl v0.0.0-20181017203307-c2dcc5cca94a
+	go.opentelemetry.io/otel v1.10.0
+	go.opentelemetry.io/otel/exporters/stdout/stdouttrace v1.10.0
+	go.opentelemetry.io/otel/sdk v1.10.0
+	go.opentelemetry.io/otel/trace v1.10.0
 )
