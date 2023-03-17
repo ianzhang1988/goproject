@@ -4,7 +4,9 @@ go 1.16
 
 require (
 	github.com/Luzifer/go-openssl/v4 v4.1.0
+	github.com/armon/go-radix v1.0.0 // indirect
 	github.com/eclipse/paho.mqtt.golang v1.3.5
+	github.com/go-gota/gota v0.12.0 // indirect
 	github.com/go-logr/stdr v1.2.2
 	github.com/gogo/protobuf v1.3.2
 	github.com/google/uuid v1.3.0
