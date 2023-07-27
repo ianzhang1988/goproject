@@ -21,6 +21,10 @@ require (
 	github.com/multiformats/go-multiaddr v0.7.0
 	github.com/segmentio/kafka-go v0.4.38 // indirect
 	github.com/spacemonkeygo/openssl v0.0.0-20181017203307-c2dcc5cca94a
+	github.com/tetratelabs/wazero v1.3.1 // indirect
+	github.com/vadv/gopher-lua-libs v0.4.1 // indirect
+	github.com/vmihailenco/msgpack/v5 v5.3.5 // indirect
+	github.com/yuin/gopher-lua v1.1.0 // indirect
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.32.0
 	go.opentelemetry.io/otel v1.11.1
 	go.opentelemetry.io/otel/exporters/jaeger v1.11.1

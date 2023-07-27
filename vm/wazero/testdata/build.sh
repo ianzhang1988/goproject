@@ -1,0 +1,1 @@
+tinygo build -o http.wasm -scheduler=none -target=wasi http.go
