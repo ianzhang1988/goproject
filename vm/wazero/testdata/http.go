@@ -125,5 +125,12 @@ func run() {
 	}
 	httpGet(req)
 
-	log("data:" + last_return)
+	log("baidu data:" + last_return[:100])
+
+	req = HttpRequest{
+		Url: "http://www.iqiyi.com",
+	}
+	httpGet(req)
+
+	log("iqiyi data:" + last_return[:100])
 }
