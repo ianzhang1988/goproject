@@ -1,8 +1,0 @@
-{
-    "name": "http",
-    "target": {
-        "url": "https://ipes-gin.iqiyi.com/ping",
-        "code": 200,
-        "body": "pongx"
-    }
-}
