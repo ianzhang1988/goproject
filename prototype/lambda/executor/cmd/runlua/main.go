@@ -1,11 +1,13 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
 	"os"
+	"time"
 
 	libs "github.com/vadv/gopher-lua-libs"
 	lua "github.com/yuin/gopher-lua"
@@ -119,9 +121,17 @@ func main() {
 	intputFunc := NewLuaInputFunc(jsonData)
 
 	L := lua.NewState()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	L.SetContext(ctx)
+	defer cancel()
 	defer L.Close()
 	libs.Preload(L)
 
+	metric := map[string]string{}
+	MetricUD := L.NewUserData()
+	MetricUD.Value = metric
+
+	L.SetGlobal("lib_metric", MetricUD)
 	L.SetGlobal("ipes_report", L.NewFunction(Report))
 	L.SetGlobal("ipes_input", L.NewFunction(intputFunc))
 
@@ -140,5 +150,13 @@ func main() {
 
 	if err := L.DoString(string(lua_script)); err != nil {
 		panic(err)
+	}
+
+	metricLV := L.GetGlobal("lib_metric")
+	metricUd, ok := metricLV.(*lua.LUserData)
+	if ok && metricUd.Value != nil {
+		if keyValue, ok := metricUd.Value.(map[string]string); ok {
+			fmt.Println("kv:", keyValue)
+		}
 	}
 }
