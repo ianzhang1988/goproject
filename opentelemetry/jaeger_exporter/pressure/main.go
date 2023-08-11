@@ -52,7 +52,7 @@ func main() {
 		go request_thread(urlqueue)
 	}
 
-	for i := 0; i < 3000000; i++ {
+	for i := 0; i < 3000000000000; i++ {
 		if i%1000 == 0 {
 			fmt.Printf("\r%d", i)
 		}

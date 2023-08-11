@@ -34,4 +34,5 @@ require (
 	go.opentelemetry.io/otel/trace v1.11.1
 )
 
-replace github.com/vadv/gopher-lua-libs => github.com/ianzhang1988/gopher-lua-libs v0.0.0-20230809092812-8444098a793d
+// replace github.com/vadv/gopher-lua-libs => github.com/ianzhang1988/gopher-lua-libs v0.0.0-20230809092812-8444098a793d
+replace github.com/vadv/gopher-lua-libs => /data/zhangyang/gopher-lua-libs
