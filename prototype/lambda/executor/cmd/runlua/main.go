@@ -12,6 +12,7 @@ import (
 	"time"
 
 	libs "github.com/vadv/gopher-lua-libs"
+	libs_mat "github.com/vadv/gopher-lua-libs/internal_matrics"
 	lua "github.com/yuin/gopher-lua"
 )
 
@@ -112,6 +113,58 @@ func Report(L *lua.LState) int {
 	return 1 /* number of results */
 }
 
+func someTest() {
+	var m runtime.MemStats
+	runtime.ReadMemStats(&m)
+	fmt.Println("----- begin ------")
+	fmt.Printf("Alloc = %v MiB\n", m.Alloc/1024/1024)
+	fmt.Printf("TotalAlloc = %v MiB\n", m.TotalAlloc/1024/1024)
+	fmt.Printf("Sys = %v MiB\n", m.Sys/1024/1024)
+	fmt.Printf("NumGC = %v\n", m.NumGC)
+
+	var wg sync.WaitGroup
+	ch := make(chan int, 10)
+
+	// 启动 10 个 goroutine，并为每个 goroutine 增加一个等待计数
+	for i := 0; i < 3; i++ {
+		wg.Add(1)
+		go func() {
+			// 在函数退出时，调用 Done 方法，表示一个 goroutine 结束
+			defer wg.Done()
+			// 从 channel 中读取数据，并处理它
+			for _ = range ch {
+				doJob()
+			}
+		}()
+	}
+
+	// 向 channel 中写入所有数据
+	for i := 0; i < 3000; i++ {
+		ch <- i
+		fmt.Printf("\r%d", i)
+	}
+	close(ch)
+
+	// 等待所有 goroutine 结束
+	wg.Wait()
+
+	runtime.ReadMemStats(&m)
+	fmt.Println("----- before GC ------")
+	fmt.Printf("Alloc = %v MiB\n", m.Alloc/1024/1024)
+	fmt.Printf("TotalAlloc = %v MiB\n", m.TotalAlloc/1024/1024)
+	fmt.Printf("Sys = %v MiB\n", m.Sys/1024/1024)
+	fmt.Printf("NumGC = %v\n", m.NumGC)
+
+	runtime.GC()
+
+	runtime.ReadMemStats(&m)
+	fmt.Println("----- after ------")
+	fmt.Printf("Alloc = %v MiB\n", m.Alloc/1024/1024)
+	fmt.Printf("TotalAlloc = %v MiB\n", m.TotalAlloc/1024/1024)
+	fmt.Printf("Sys = %v MiB\n", m.Sys/1024/1024)
+	fmt.Printf("NumGC = %v\n", m.NumGC)
+}
+
 func doJob() {
 	jsonData, err := LoadInput(*fInputFile)
 	if err != nil {
@@ -150,63 +203,18 @@ func doJob() {
 	}
 
 	if err := L.DoString(string(lua_script)); err != nil {
-		panic(err)
+		fmt.Println("lua runtime err:", err)
 	}
 
-	// if keyValue, ok := libs_mat.GetMat(L); ok {
-	// 	for k, v := range keyValue {
-	// 		fmt.Println(k, ":", v)
-	// 	}
-	// }
-}
-
-func someTest() {
-	var m runtime.MemStats
-	runtime.ReadMemStats(&m)
-	fmt.Println("----- begin ------")
-	fmt.Printf("Alloc = %v MiB\n", m.Alloc/1024/1024)
-	fmt.Printf("TotalAlloc = %v MiB\n", m.TotalAlloc/1024/1024)
-	fmt.Printf("Sys = %v MiB\n", m.Sys/1024/1024)
-	fmt.Printf("NumGC = %v\n", m.NumGC)
-
-	var wg sync.WaitGroup
-	ch := make(chan int, 10)
-
-	// 启动 10 个 goroutine，并为每个 goroutine 增加一个等待计数
-	for i := 0; i < 10; i++ {
-		wg.Add(1)
-		go func() {
-			// 在函数退出时，调用 Done 方法，表示一个 goroutine 结束
-			defer wg.Done()
-			// 从 channel 中读取数据，并处理它
-			for _ = range ch {
-				doJob()
-			}
-		}()
+	if keyValue, ok := libs_mat.GetMat(L); ok {
+		for k, v := range keyValue {
+			fmt.Println(k, ":", v)
+		}
 	}
-
-	// 向 channel 中写入所有数据
-	for i := 0; i < 20000; i++ {
-		ch <- i
-		fmt.Printf("\r%d", i)
-	}
-	close(ch)
-
-	// 等待所有 goroutine 结束
-	wg.Wait()
-
-	runtime.GC()
-
-	runtime.ReadMemStats(&m)
-	fmt.Println("----- after ------")
-	fmt.Printf("Alloc = %v MiB\n", m.Alloc/1024/1024)
-	fmt.Printf("TotalAlloc = %v MiB\n", m.TotalAlloc/1024/1024)
-	fmt.Printf("Sys = %v MiB\n", m.Sys/1024/1024)
-	fmt.Printf("NumGC = %v\n", m.NumGC)
 }
 
 func main() {
 	flag.Parse()
-	// doJob()
-	someTest()
+	doJob()
+	//someTest()
 }

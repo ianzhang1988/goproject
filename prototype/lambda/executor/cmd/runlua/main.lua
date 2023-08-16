@@ -1,65 +1,275 @@
+-- 基于github.com/vadv/gopher-lua-libs扩展的模块
 local json = require("json") 
 local http = require("http")
--- 上面是注册到lua里面的模块
+local base64 = require("base64")
+local tcp = require("tcp")
+
+-- lua模块(同目录下的另一个lua文件)
 local utils = require("utils")
--- 这个是同目录下的另一个lua文件
 
--- ipes_开头的是我写
-local input_table = ipes_input()
+-- ipes_开头的是扩展的函数
 
--- print("input:")
--- local target = utils.printTable(input_table)
+function check_table(expect, examined)
+    for k,v in pairs(expect) do
+        if examined[k] == nil then
+            return false, string.format("[%s] not in keys", k)
+        end
 
-local target = input_table["target"]
+        local value = examined[k]
 
-local client = http.client({timeout = 10})
-
--- GET
-local ok, report_data = pcall( function ()
-    local request = http.request("GET", target["url"] )
-    local result, err = client:do_request(request)
-    if err then
-        error(err)
+        if value ~= v then
+            return false, string.format("headers[%s:%s] mismatch [%s:%s]", k, v, k, value)
+        end
     end
 
-    report_data_table = {
-        status = "ok",
-        msg = ""
-    }
+    return true, ""
+end
 
-    function helper()
-        if not (result.code == target["code"] ) then
+function http_probe(input_table, report_data_table)
+
+    local target = input_table["target"]
+    local timeout = target["timeout"]
+    local method = target["method"]
+    local url = target["url"]
+    local body = target["body"]
+    local headers = target["headers"]
+    local basic_auth = target["basic_auth"]
+
+    local client = http.client({
+        timeout = timeout,
+        insecure_ssl = true,
+
+    })
+
+    local request
+    if body == nil or body == "" then
+        request = http.request(method, url)
+    else
+        request = http.request(method, url, body)
+    end
+    
+    for k, v in pairs(headers) do
+        request:header_set(k, v)
+    end
+
+    if basic_auth ~= nil then
+        request:set_basic_auth(basic_auth["user"], basic_auth["pass"])
+    end
+
+    local result, err = client:do_request(request)
+    if err then
+        report_data_table["status"] = "failed"
+        report_data_table["msg"] = string.format("request failed:%s", err)
+        return
+    end
+
+    function check_expect()
+        local expect = input_table["expect"]
+
+        -- check code
+        if not (result.code == expect["code"] ) then
             report_data_table["status"] = "failed"
-            report_data_table["msg"] = string.format("code [%s] in not [%s]", result.code, target["code"])
+            report_data_table["msg"] = string.format("code [%s] in not [%s]", result.code, expect["code"])
             return
         end
     
-        if result.body ~= target["body"] then
+        -- check body
+        local base64_data = expect["base64_data"]
+        local data
+
+        if base64_data == nil or base64_data == "" then
+            data = expect["data"]
+        else
+            local decoded, err = base64.StdEncoding:decode_string("5L2g5aW9")
+            assert(not err, err)
+            data = decoded
+        end
+
+        if result.body ~= data then
             report_data_table["status"] = "failed"
-            report_data_table["msg"] = string.format("body [%s] in not [%s]", result.body, target["body"])
+            report_data_table["msg"] = string.format("body [%s] is not [%s]", result.body, data)
             return
         end
+
+        -- check headers
+        local headers = expect["headers"]
+        if headers ~= nil then
+            local ok, msg = check_table(headers, result.headers)
+            if not ok then
+                report_data_table["status"] = "failed"
+                report_data_table["msg"] = msg
+                return
+            end
+        end
+
     end
 
-    helper()
+    if input_table["expect"] ~= nil then
+        check_expect()
+    else
+        -- report code, body, headers
+        report_data_table["code"] = result.code
+        report_data_table["headers"] = result.headers
+        report_data_table["body"] = result.body
+    end
 
     -- print("output:")
     -- utils.printTable(report_data_table)
 
-    local result, err = json.encode(report_data_table)
-    if err then
-        error(err)
+    return
+end
+
+function tcp_probe(input_table, report_data_table)
+    sock("tcp", input_table, report_data_table)
+end
+
+function udp_probe(input_table, report_data_table)
+    sock("udp", input_table, report_data_table)
+end
+
+function sock(proto, input_table, report_data_table)
+    print(proto)
+    local target = input_table["target"]
+
+    local url = target["url"]
+    local dial_timeout = target["dial_timeout"]
+    local write_timeout = target["write_timeout"]
+    local read_timeout = target["read_timeout"]
+    local close_timeout = target["close_timeout"]
+    local data = target["data"]
+    local read = target["read"]
+
+    if dial_timeout == nil then
+        dial_timeout = 5
     end
 
-    return result
-end)
+    local conn, err = tcp.open(url, dial_timeout, proto)
+    if err then
+        print(err)
+        report_data_table["status"] = "failed"
+        report_data_table["msg"] = string.format("dail failed:%s", err)
+        return
+    end
 
+    if write_timeout then
+        conn.writeTimeout = write_timeout
+    end
+    if write_timeout then
+        conn.readTimeout = read_timeout
+    end
+    if write_timeout then
+        conn.closeTimeout = close_timeout
+    end
 
-if not ok then
-    report_data = "err: "..report_data
+    if data then
+        err = conn:write(data)
+        if err then
+            report_data_table["status"] = "failed"
+            report_data_table["msg"] = string.format("write failed:%s", err)
+            return
+        end
+    end
+
+    function check_expect()
+        local expect = input_table["expect"]
+
+        -- check body
+        local base64_data = expect["base64_data"]
+        local data
+
+        if base64_data == nil or base64_data == "" then
+            data = expect["data"]
+        else
+            local decoded, err = base64.StdEncoding:decode_string(base64_data)
+            assert(not err, err)
+            data = decoded
+        end
+
+        local result, err = conn:read(#data)
+        if err then
+            report_data_table["status"] = "failed"
+            report_data_table["msg"] = string.format("read failed:%s", err)
+            return
+        end
+
+        print("result,data",result,data)
+
+        if result ~= data then
+            report_data_table["status"] = "failed"
+            report_data_table["msg"] = string.format("body [%s] is not [%s]", result.body, data)
+            return
+        end
+
+        -- check headers
+        local headers = expect["headers"]
+        if headers ~= nil then
+            local ok, msg = check_table(headers, result.headers)
+            if not ok then
+                report_data_table["status"] = "failed"
+                report_data_table["msg"] = msg
+                return
+            end
+        end
+
+    end
+
+    if input_table["expect"] ~= nil then
+        check_expect()
+    end
+
+    conn:close()
 end
 
-local err = ipes_report(report_data)
-if err ~= nil then
-    print("report err: "..err)
+local process_func = {
+    http = http_probe,
+    tcp = tcp_probe,
+    udp = udp_probe,
+}
+
+function main()
+    -- 获取输入数据
+    local input_table = ipes_input()
+
+    local probe_type = input_table["type"]
+    local task_id = input_table["task_id"]
+    local meta = input_table["lambda_meta"]
+
+    -- call process function
+    if process_func[probe_type] == nil then
+        print(probe_type, "not supported!")
+        return
+    end
+
+    local func = process_func[probe_type]
+    if func == nil then
+        print(string.format("probe type [%s] is not supported!", probe_type))
+    end
+
+    local report_data_table = {
+        id = task_id,
+        status = "ok",
+        lambda_meta = meta,
+        msg = ""
+    }
+
+    local ok, err = pcall(func, input_table, report_data_table)
+
+    -- error handler
+    if not ok then
+        report_data_table["status"] = "err"
+        report_data_table["msg"] = err
+    end
+
+    -- report result
+    local result, err = json.encode(report_data_table)
+    assert(not err, err)
+
+    local err = ipes_report(result)
+    if err ~= nil then
+        print("report err: "..err)
+        return
+    end
+
 end
+
+main()
