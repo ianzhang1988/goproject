@@ -3,6 +3,7 @@ local json = require("json")
 local http = require("http")
 local base64 = require("base64")
 local tcp = require("tcp")
+local time = require("time")
 
 -- lua模块(同目录下的另一个lua文件)
 local utils = require("utils")
@@ -185,14 +186,13 @@ function sock(proto, input_table, report_data_table)
             data = decoded
         end
 
+        -- read #data bytes; 注意：readall 会造成read超时。
         local result, err = conn:read(#data)
         if err then
             report_data_table["status"] = "failed"
             report_data_table["msg"] = string.format("read failed:%s", err)
             return
         end
-
-        print("result,data",result,data)
 
         if result ~= data then
             report_data_table["status"] = "failed"
@@ -252,7 +252,12 @@ function main()
         msg = ""
     }
 
+
+    local begin = time.unix()
     local ok, err = pcall(func, input_table, report_data_table)
+    local stop = time.unix()
+    
+    report_data_table["time_used"] = stop - begin
 
     -- error handler
     if not ok then

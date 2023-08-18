@@ -11,6 +11,7 @@ require (
 	github.com/go-logr/stdr v1.2.2
 	github.com/gogo/protobuf v1.3.2
 	github.com/google/uuid v1.3.0
+	github.com/hashicorp/go-memdb v1.3.4
 	github.com/ipfs/go-datastore v0.6.0
 	github.com/ipfs/go-log/v2 v2.5.1
 	github.com/libp2p/go-libp2p v0.23.2
