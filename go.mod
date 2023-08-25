@@ -7,6 +7,7 @@ require (
 	github.com/armon/go-radix v1.0.0
 	github.com/eclipse/paho.mqtt.golang v1.3.5
 	github.com/genjidb/genji v0.15.2
+	github.com/go-chi/chi/v5 v5.0.10 // indirect
 	github.com/go-gota/gota v0.12.0
 	github.com/go-logr/stdr v1.2.2
 	github.com/gogo/protobuf v1.3.2

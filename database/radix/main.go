@@ -24,14 +24,14 @@ func main() {
 	fmt.Printf("TotalAlloc = %v MiB\n", m.TotalAlloc/1024/1024)
 	fmt.Printf("Sys = %v MiB\n", m.Sys/1024/1024)
 	fmt.Printf("NumGC = %v\n", m.NumGC)
- 
+
 	r := radix.New()
 
 	fmt.Println("start insert")
 	ispList := []string{"cmnet", "ct", "cnc"}
 	start := time.Now()
 	for i := 0; i < 1000000; i++ {
-		b := Box{
+		b := &Box{
 			SN:       fmt.Sprintf("my_sn_%d", i),
 			Isp:      ispList[i%len(ispList)],
 			Province: "shangdong",
