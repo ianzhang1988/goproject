@@ -12,12 +12,27 @@ type DevGroup struct {
 	devs []*Device
 }
 
-type AffinityGroup map[string]*DevGroup
+func (dg *DevGroup) Next() *Device {
+	dev := dg.devs[dg.idx]
+	dg.idx += 1
+	dg.idx = dg.idx % uint32(len(dg.devs))
+	return dev
+}
+
+func (dg *DevGroup) Shuffle() {
+	rand.Seed(time.Now().UnixNano())
+	rand.Shuffle(len(dg.devs), func(i, j int) {
+		dg.devs[i], dg.devs[j] = dg.devs[j], dg.devs[i]
+	})
+}
+
+type AffinityDevGroup map[string]*DevGroup
 
 type TaskMatch struct {
 	Task     *TaskArgs
 	Affinity string
 	Dev      *Device
+	Upload   Uplaod
 }
 
 func Affinity2Path(name, version string, aff Affinity) string {
@@ -42,72 +57,132 @@ func ParseVersion(ver string) ([]string, error) {
 	return []string{ver}, nil
 }
 
-func MatchDev(job *Job) (JobResult, error) {
-	mdb := GetDeviceMemDB()
-	replica := job.LambdaBehaviour.Replica
+func GetAffinityDevGroup(job *Job, affinityDevs AffinityDevs) AffinityDevGroup {
+
 	funcName := job.FuncInfo.Name
-	funcVersion, err := ParseVersion(job.FuncInfo.Version)
-	if err != nil {
-		return JobResult{}, fmt.Errorf("parse version failed: %s", err)
-	}
-	sn2dev := GetSn2DevMap()
+	// funcVersion, err := ParseVersion(job.FuncInfo.Version)
+	// if err != nil {
+	// 	return JobResult{}, fmt.Errorf("parse version failed: %s", err)
+	// }
+	funcVersion := job.FuncInfo.Version
+	// sn2dev := GetSn2DevMap()
 
-	affinityGrp := AffinityGroup{}
-
-	rand.Seed(time.Now().UnixNano())
-	randStart := rand.Uint32()
+	affinityGrp := AffinityDevGroup{}
 
 	if job.Affinity == nil {
 
-		dg := &DevGroup{
-			idx: randStart,
-		}
+		dg := &DevGroup{}
 
-		for _, ver := range funcVersion {
-			devs := mdb.FindPrefix(Affinity2Path(funcName, ver, Affinity{}))
-			for _, d := range devs {
-				dg.devs = append(dg.devs, d.(*Device))
-			}
+		devs, err := affinityDevs.GetAffinityDevs(funcName, funcVersion, Affinity{All: true})
+		if err != nil {
+			fmt.Printf("GetAffinityDevGroup get devs 1 err: %s", err)
 		}
+		dg.devs = append(dg.devs, devs...)
+
+		dg.Shuffle()
 
 		affinityGrp[""] = dg
 	}
 
 	for k, v := range job.Affinity {
-		if len(v.Sn) > 0 {
-			continue
-		}
+		dg := &DevGroup{}
 
-		dg := &DevGroup{
-			idx: randStart,
+		devs, err := affinityDevs.GetAffinityDevs(funcName, funcVersion, v)
+		if err != nil {
+			fmt.Printf("GetAffinityDevGroup get devs 2 err: %s", err)
 		}
+		dg.devs = append(dg.devs, devs...)
 
-		for _, ver := range funcVersion {
-			devs := mdb.FindPrefix(Affinity2Path(funcName, ver, v))
-			for _, d := range devs {
-				dg.devs = append(dg.devs, d.(*Device))
-			}
+		dg.Shuffle()
+
+		if len(dg.devs) > 0 {
+			affinityGrp[k] = dg
 		}
-
-		affinityGrp[k] = dg
 	}
 
-	for k, v := range job.Affinity {
-		if len(v.Sn) == 0 {
-			continue
-		}
+	return affinityGrp
+}
 
-		dg := &DevGroup{
-			idx: randStart,
-		}
+// func GetAffinityDevGroupOld(job *Job) AffinityDevGroup {
+// 	mdb := GetDeviceMemDB()
+// 	funcName := job.FuncInfo.Name
+// 	// funcVersion, err := ParseVersion(job.FuncInfo.Version)
+// 	// if err != nil {
+// 	// 	return JobResult{}, fmt.Errorf("parse version failed: %s", err)
+// 	// }
+// 	funcVersion := job.FuncInfo.Version
+// 	sn2dev := GetSn2DevMap()
 
-		for _, sn := range v.Sn {
-			if d, ok := sn2dev[sn]; ok {
-				dg.devs = append(dg.devs, d)
-			}
-		}
+// 	affinityGrp := AffinityDevGroup{}
 
-		affinityGrp[k] = dg
+// 	if job.Affinity == nil {
+
+// 		dg := &DevGroup{}
+
+// 		devs := mdb.FindPrefix(Affinity2Path(funcName, funcVersion, Affinity{}))
+
+// 		for _, d := range devs {
+// 			dg.devs = append(dg.devs, d.(*Device))
+// 		}
+
+// 		dg.Shuffle()
+
+// 		affinityGrp[""] = dg
+// 	}
+
+// 	for k, v := range job.Affinity {
+// 		if len(v.Sn) > 0 {
+// 			continue
+// 		}
+
+// 		dg := &DevGroup{}
+
+// 		devs := mdb.FindPrefix(Affinity2Path(funcName, funcVersion, v))
+// 		for _, d := range devs {
+// 			dg.devs = append(dg.devs, d.(*Device))
+// 		}
+
+// 		dg.Shuffle()
+
+// 		if len(dg.devs) > 0 {
+// 			affinityGrp[k] = dg
+// 		}
+// 	}
+
+// 	for k, v := range job.Affinity {
+// 		if len(v.Sn) == 0 {
+// 			continue
+// 		}
+
+// 		dg := &DevGroup{}
+
+// 		for _, sn := range v.Sn {
+// 			if d, ok := sn2dev[sn]; ok {
+// 				dg.devs = append(dg.devs, d)
+// 			}
+// 		}
+
+// 		dg.Shuffle()
+
+// 		affinityGrp[k] = dg
+// 	}
+
+// 	return affinityGrp
+// }
+
+func MatchDev(job *Job, affinityGrp AffinityDevGroup) ([]TaskMatch, error) {
+	replica := job.LambdaBehaviour.Replica
+
+	for k, v := range affinityGrp {
+		fmt.Print(k, ":")
+		num := 10
+		if len(v.devs) < num {
+			num = len(v.devs)
+		}
+		for _, d := range v.devs[:num] {
+			fmt.Print(" ", *d)
+		}
+		fmt.Println("")
 	}
 
 	tasks := []TaskMatch{}
@@ -118,6 +193,7 @@ func MatchDev(job *Job) (JobResult, error) {
 				tm := TaskMatch{
 					Task:     taskargs,
 					Affinity: aff,
+					Upload:   job.Upload,
 				}
 				tasks = append(tasks, tm)
 			}
@@ -125,20 +201,24 @@ func MatchDev(job *Job) (JobResult, error) {
 				tm := TaskMatch{
 					Task:     taskargs,
 					Affinity: "",
+					Upload:   job.Upload,
 				}
 				tasks = append(tasks, tm)
 			}
 		}
 	}
 
-	for _, t := range tasks {
+	for i, t := range tasks {
 		grp, ok := affinityGrp[t.Affinity]
 		if !ok {
 			// process error
 			continue
 		}
-		// t.Dev =
+
+		tasks[i].Dev = grp.Next()
+
+		// fmt.Println(t)
 	}
 
-	return JobResult{}, nil
+	return tasks, nil
 }

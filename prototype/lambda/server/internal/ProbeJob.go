@@ -6,6 +6,7 @@ type FunctionInfo struct {
 }
 
 type Affinity struct {
+	All      bool
 	Isp      string   `json:"isp"`
 	Province string   `json:"province"`
 	City     string   `json:"city"`
