@@ -269,6 +269,9 @@ function main()
     local result, err = json.encode(report_data_table)
     assert(not err, err)
 
+    ipes_report("http", "http://my", "hi")
+    ipes_report("kafka", "my", "test", "", "you")
+
     local err = ipes_report(result)
     if err ~= nil then
         print("report err: "..err)

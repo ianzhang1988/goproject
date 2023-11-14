@@ -3,6 +3,7 @@ package lambda_service
 import (
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -27,8 +28,15 @@ func RegisterHandlers() *chi.Mux {
 }
 
 func Serve(r *chi.Mux) {
-	
-	err := http.ListenAndServe(":3000", r)
+	server := http.Server{
+		Addr:              ":3000",
+		ReadTimeout:       120 * time.Second,
+		ReadHeaderTimeout: 30 * time.Second,
+		WriteTimeout:      120 * time.Second,
+		IdleTimeout:       300 * time.Second,
+	}
+	// err := http.ListenAndServe(":3000", r)
+	err := server.ListenAndServe()
 	if err != nil {
 		fmt.Println("serve failed:", err)
 	}

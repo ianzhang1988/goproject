@@ -101,9 +101,28 @@ func save(data string) error {
 }
 
 func Report(L *lua.LState) int {
-	data := L.ToString(1) /* get argument */
+	var err error
+	var data string
 
-	err := save(data)
+	if L.GetTop() == 1 {
+		data = L.ToString(1) /* get argument */
+	} else if L.GetTop() > 1 {
+		reportType := L.ToString(1)
+		if reportType == "kafka" {
+			cluster := L.ToString(2)
+			topic := L.ToString(3)
+			key := L.ToString(4)
+			data := L.ToString(5)
+			fmt.Printf("type:%s, cluster:%s, topic:%s, key:%s, data:%s\n", reportType, cluster, topic, key, data)
+		} else if reportType == "http" {
+			url := L.ToString(2)
+			body := L.ToString(3)
+			fmt.Printf("type:%s, url:%s, body:%s\n", reportType, url, body)
+		}
+	}
+
+	err = save(data)
+
 	if err != nil {
 		L.Push(lua.LString(err.Error())) /* push result */
 	} else {

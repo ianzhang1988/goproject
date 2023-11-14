@@ -168,7 +168,7 @@ type CacahedIndexedAffinityDevs struct {
 func NewCacahedIndexedAffinityDevs(geter DevsGeter, expire time.Duration) *CacahedAffinityDevs {
 	return &CacahedAffinityDevs{
 		Cache: gcache.New(20).
-			LRU().
+			LFU().
 			LoaderExpireFunc(func(key interface{}) (interface{}, *time.Duration, error) {
 				// get dev and cache by function name and version
 				keystr := key.(string)
