@@ -23,7 +23,11 @@ func SendTask(tasks []TaskMatch) error {
 	return nil
 }
 
-func DispatchJob(job *Job, affinityDevs AffinityDevs) error {
+func DispatchJob(job *Job) {
+	
+}
+
+func DispatchTask(job *Job, affinityDevs AffinityDevs) error {
 
 	affinityGrp := GetAffinityDevGroup(job, affinityDevs)
 	tasks, err := MatchDev(job, affinityGrp)

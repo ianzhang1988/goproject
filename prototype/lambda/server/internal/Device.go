@@ -182,7 +182,7 @@ func NewCacahedIndexedAffinityDevs(geter DevsGeter, expire time.Duration) *Cacah
 					return nil, nil, fmt.Errorf("get new cache err: %s", err)
 				}
 
-				db := NewMemDB(10000)
+				db := NewRadixIndex(10000)
 				for _, d := range devs {
 					db.Insert(d)
 				}
@@ -195,14 +195,14 @@ func NewCacahedIndexedAffinityDevs(geter DevsGeter, expire time.Duration) *Cacah
 	}
 }
 
-var deviceDB *MemDB
+var deviceDB *RadixIndex
 var sn2Dev map[string]*Device
 
-func GetDeviceMemDB() *MemDB {
+func GetDeviceMemDB() *RadixIndex {
 	return deviceDB
 }
 
-func setNewDBAndMap(new *MemDB, newMap map[string]*Device) {
+func setNewDBAndMap(new *RadixIndex, newMap map[string]*Device) {
 	// 在已经获得旧的db的协程中继续使用
 	// 上面的协程都执行完后，旧db被GC释放
 	deviceDB = new
@@ -215,7 +215,7 @@ func GetSn2DevMap() map[string]*Device {
 
 func UpdateDB() {
 	// get dev form ipes api or db
-	newDB := NewMemDB(1000000)
+	newDB := NewRadixIndex(1000000)
 	sn2dev := map[string]*Device{}
 
 	// test data

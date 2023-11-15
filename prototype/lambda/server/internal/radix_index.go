@@ -8,29 +8,29 @@ import (
 
 type ParsePath func(value interface{}) ([]string, error)
 
-type MemDB struct {
+type RadixIndex struct {
 	Trie *radix.Tree
 	Data []interface{}
 }
 
-func NewMemDB(size uint32) *MemDB {
-	return &MemDB{
+func NewRadixIndex(size uint32) *RadixIndex {
+	return &RadixIndex{
 		Trie: radix.New(),
 		Data: make([]interface{}, 0, size),
 	}
 }
 
-func (db *MemDB) Insert(value interface{}) {
+func (db *RadixIndex) Insert(value interface{}) {
 	db.Data = append(db.Data, value)
 }
 
-func (db *MemDB) Shuffle() {
+func (db *RadixIndex) Shuffle() {
 	rand.Shuffle(len(db.Data), func(i, j int) {
 		db.Data[i], db.Data[j] = db.Data[j], db.Data[i]
 	})
 }
 
-func (db *MemDB) CreateIndex(f ParsePath) error {
+func (db *RadixIndex) CreateIndex(f ParsePath) error {
 	for i, v := range db.Data {
 		pathList, err := f(v)
 		if err != nil {
@@ -59,7 +59,7 @@ func (db *MemDB) CreateIndex(f ParsePath) error {
 	return nil
 }
 
-func (db *MemDB) FindPrefixIdx(prefix string) []uint32 {
+func (db *RadixIndex) FindPrefixIdx(prefix string) []uint32 {
 	idxSlice := []uint32{}
 	db.Trie.WalkPrefix(prefix, func(s string, v interface{}) bool {
 		idxSlice = append(idxSlice, (v.([]uint32))...)
@@ -69,7 +69,7 @@ func (db *MemDB) FindPrefixIdx(prefix string) []uint32 {
 	return idxSlice
 }
 
-func (db *MemDB) FindPrefix(prefix string) []interface{} {
+func (db *RadixIndex) FindPrefix(prefix string) []interface{} {
 	interfaceSlice := []interface{}{}
 	db.Trie.WalkPrefix(prefix, func(s string, v interface{}) bool {
 		idxSlice := v.(*([]uint32))

@@ -12,15 +12,15 @@ type TestObj struct {
 	LambdaName []string
 }
 
-func TestMemDB(t *testing.T) {
-	t.Run("db", func(t *testing.T) {
+func TestRadixIndex(t *testing.T) {
+	t.Run("idx", func(t *testing.T) {
 		t.Log("test begin")
 
 		ispName := []string{"ct", "cnc", "cmnet"}
 		provienceName := []string{"shangdong", "hebei", "guangdong", "hunan"}
 		lambdaName := []string{"l1", "l2"}
 
-		db := NewMemDB(10)
+		idx := NewRadixIndex(10)
 
 		for i := 0; i < 10; i++ {
 			o := TestObj{
@@ -30,10 +30,10 @@ func TestMemDB(t *testing.T) {
 				LambdaName: lambdaName,
 			}
 
-			db.Insert(&o)
+			idx.Insert(&o)
 		}
 
-		db.CreateIndex(func(v interface{}) ([]string, error) {
+		idx.CreateIndex(func(v interface{}) ([]string, error) {
 			pathSlice := []string{}
 			o := v.(*TestObj)
 			for _, n := range o.LambdaName {
@@ -44,7 +44,7 @@ func TestMemDB(t *testing.T) {
 			return pathSlice, nil
 		})
 
-		objSliceI := db.FindPrefix("l1")
+		objSliceI := idx.FindPrefix("l1")
 		objSlice := []*TestObj{}
 		for _, oI := range objSliceI {
 			objSlice = append(objSlice, oI.(*TestObj))
