@@ -1,12 +1,16 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
+	"net/http"
+	"net/url"
 	"os"
+	"path/filepath"
 	"runtime"
 	"sync"
 	"time"
@@ -20,6 +24,7 @@ var (
 	fLuaFile    = flag.String("f", "main.lua", "lua to run")
 	fInputFile  = flag.String("i", "input.json", "input args")
 	fOutputFile = flag.String("o", "output", "output file")
+	fUploadUrl  = flag.String("up", "", "upload url")
 )
 
 type InputArgs struct {
@@ -100,36 +105,240 @@ func save(data string) error {
 	return nil
 }
 
-func Report(L *lua.LState) int {
-	var err error
-	var data string
+type KafkaBody struct {
+	Topic string `json:"topic"`
+	Key   string `json:"key"`
+	Body  string `json:"body"`
+}
 
-	if L.GetTop() == 1 {
-		data = L.ToString(1) /* get argument */
-	} else if L.GetTop() > 1 {
-		reportType := L.ToString(1)
-		if reportType == "kafka" {
-			cluster := L.ToString(2)
-			topic := L.ToString(3)
-			key := L.ToString(4)
-			data := L.ToString(5)
-			fmt.Printf("type:%s, cluster:%s, topic:%s, key:%s, data:%s\n", reportType, cluster, topic, key, data)
-		} else if reportType == "http" {
-			url := L.ToString(2)
-			body := L.ToString(3)
-			fmt.Printf("type:%s, url:%s, body:%s\n", reportType, url, body)
+type KafkaBatchBody []KafkaBody
+
+type HttpResponse struct {
+	Code int    `json:"code"`
+	Msg  string `json:"msg"`
+}
+
+func HttpReport(req *http.Request) error {
+
+	hc := http.Client{}
+
+	var err error
+	retry := 3
+	for i := 0; i < retry; i++ {
+		var resp *http.Response
+		resp, err = hc.Do(req)
+
+		ok := func() bool {
+			if err != nil {
+				fmt.Printf("http report request error: %s\n", err)
+				return false
+			}
+
+			var data []byte
+			data, err = io.ReadAll(resp.Body)
+
+			fmt.Printf("resp body %s\n", data)
+
+			if err != nil {
+				fmt.Printf("http report read body error: %s\n", err)
+				return false
+			}
+
+			hr := HttpResponse{}
+			err = json.Unmarshal(data, &hr)
+			if err != nil {
+				fmt.Printf("http report unmarshal error: %s\n", err)
+				return false
+			}
+
+			if hr.Code != 200 {
+				err = fmt.Errorf("http report code error: %s", hr.Msg)
+				fmt.Printf("http report code error: %s\n", hr.Msg)
+				return false
+			} else {
+				err = nil
+				return true
+			}
+		}()
+
+		resp.Body.Close()
+
+		if ok {
+			break
+		}
+
+		if i < (retry - 1) { // skip last one
+			time.Sleep(time.Duration(1+i*2) * time.Second)
 		}
 	}
 
-	err = save(data)
+	return err
+}
 
-	if err != nil {
-		L.Push(lua.LString(err.Error())) /* push result */
-	} else {
-		L.Push(lua.LNil)
+func KafkaReport(id, topic, key, data string) error {
+	fmt.Println("KafkaReport")
+
+	msg := KafkaBody{
+		Topic: topic,
+		Key:   key,
+		Body:  data,
 	}
 
-	return 1 /* number of results */
+	jsonStr, err := json.Marshal(&msg)
+	if err != nil {
+		return err
+	}
+
+	params := url.Values{}
+	params.Add("gid", id)
+
+	fullUrl := *fUploadUrl + "?" + params.Encode()
+	fmt.Println("url", fullUrl)
+
+	req, err := http.NewRequest(http.MethodPost, fullUrl, bytes.NewBuffer(jsonStr))
+	if err != nil {
+		return err
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Cache-Control", "no-cache")
+
+	// resq_data, _ := httputil.DumpRequest(req, false)
+	// fmt.Println(string(resq_data))
+
+	err = HttpReport(req)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func KafkaReportBatch(id, topic, key, data string) error {
+	fmt.Println("KafkaReportBatch")
+
+	msgs := []json.RawMessage{}
+	err := json.Unmarshal([]byte(data), &msgs)
+	if err != nil {
+		return fmt.Errorf("data is not json array: %s", err)
+	}
+
+	kakfaBatch := KafkaBatchBody{}
+	for _, d := range msgs {
+		kMsg := KafkaBody{
+			Topic: topic,
+			Key:   key,
+			Body:  string(d),
+		}
+		kakfaBatch = append(kakfaBatch, kMsg)
+	}
+
+	jsonStr, err := json.Marshal(&kakfaBatch)
+	if err != nil {
+		return fmt.Errorf("marshal kafka batch err: %s", err)
+	}
+
+	params := url.Values{}
+	params.Add("gid", id)
+	params.Add("batch", "")
+
+	fullUrl := *fUploadUrl + "?" + params.Encode()
+	fmt.Println("url", fullUrl)
+
+	req, err := http.NewRequest(http.MethodPost, fullUrl, bytes.NewBuffer(jsonStr))
+	if err != nil {
+		return err
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Cache-Control", "no-cache")
+
+	// resq_data, _ := httputil.DumpRequest(req, true)
+	// fmt.Println(string(resq_data))
+
+	err = HttpReport(req)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+type ReportFunc func(string) error
+
+func NewLuaReportFunc(input interface{}) lua.LGFunction {
+	// use parameters in output
+	report := func() ReportFunc {
+		inputMap := input.(map[string]interface{})
+		if inputMap == nil {
+			return nil
+		}
+
+		if _, ok := inputMap["upload"]; !ok {
+			return nil
+		}
+
+		upload := inputMap["upload"]
+		uploadMap := upload.(map[string]interface{})
+		if uploadMap == nil {
+			return nil
+		}
+
+		uplaodType, _ := uploadMap["type"].(string) // var , _ := // if not ok, then empty string
+		topic, _ := uploadMap["topic"].(string)
+		id, _ := uploadMap["id"].(string)
+
+		switch uplaodType {
+		case "kafka":
+			return func(data string) error {
+				return KafkaReport(id, topic, "", data)
+			}
+		case "kafka_batch":
+			return func(data string) error {
+				return KafkaReportBatch(id, topic, "", data)
+			}
+		default:
+			fmt.Println("type not support:", uplaodType)
+		}
+
+		return nil
+	}()
+
+	return func(L *lua.LState) int {
+		var err error
+		var data string
+
+		if L.GetTop() == 1 {
+			data = L.ToString(1) /* get argument */
+			if report != nil {
+				err = report(data)
+			} else {
+				err = save(data)
+			}
+		} else if L.GetTop() > 1 {
+			reportType := L.ToString(1)
+			if reportType == "kafka" {
+				id := L.ToString(2)
+				topic := L.ToString(3)
+				key := L.ToString(4)
+				data := L.ToString(5)
+				// fmt.Printf("type:%s, cluster:%s, topic:%s, key:%s, data:%s\n", reportType, cluster, topic, key, data)
+				err = KafkaReport(id, topic, key, data)
+			} else if reportType == "http" {
+				url := L.ToString(2)
+				body := L.ToString(3)
+				fmt.Printf("type:%s, url:%s, body:%s\n", reportType, url, body)
+			}
+		}
+
+		if err != nil {
+			L.Push(lua.LString(err.Error())) /* push result */
+		} else {
+			L.Push(lua.LNil)
+		}
+
+		return 1 /* number of results */
+	}
 }
 
 func someTest() {
@@ -191,6 +400,7 @@ func doJob() {
 		return
 	}
 	intputFunc := NewLuaInputFunc(jsonData)
+	reportFunc := NewLuaReportFunc(jsonData)
 
 	L := lua.NewState(lua.Options{
 		RegistrySize:        1024,
@@ -205,8 +415,23 @@ func doJob() {
 	defer L.Close()
 	libs.Preload(L)
 
-	L.SetGlobal("ipes_report", L.NewFunction(Report))
+	L.SetGlobal("ipes_report", L.NewFunction(reportFunc))
 	L.SetGlobal("ipes_input", L.NewFunction(intputFunc))
+
+	// add lua mod in script dir
+	baseDir := filepath.Dir(*fLuaFile)
+	L.SetGlobal("ipes_script_dir", L.NewFunction(
+		func(L *lua.LState) int {
+			L.Push(lua.LString(baseDir))
+			return 1
+		},
+	))
+	err = L.DoString(fmt.Sprintf(`
+	package.path = package.path .. ";%s" .. [[/?.lua]]
+	`, baseDir))
+	if err != nil {
+		fmt.Println("lua runtime err:", err)
+	}
 
 	f, err := os.Open(*fLuaFile)
 	if err != nil {
