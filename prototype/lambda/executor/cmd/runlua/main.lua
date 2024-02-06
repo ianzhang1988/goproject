@@ -10,6 +10,10 @@ local utils = require("utils")
 
 -- ipes_开头的是扩展的函数
 
+function is_table_empty(tbl)
+    return next(tbl) == nil
+end
+
 function check_table(expect, examined)
     for k,v in pairs(expect) do
         if examined[k] == nil then
@@ -49,7 +53,7 @@ function http_probe(input_table, report_data_table)
         request = http.request(method, url, body)
     end
     
-    for k, v in pairs(headers) do
+    for k, v in pairs(headers or {}) do
         request:header_set(k, v)
     end
 
@@ -81,12 +85,12 @@ function http_probe(input_table, report_data_table)
         if base64_data == nil or base64_data == "" then
             data = expect["data"]
         else
-            local decoded, err = base64.StdEncoding:decode_string("5L2g5aW9")
+            local decoded, err = base64.StdEncoding:decode_string(base64_data)
             assert(not err, err)
             data = decoded
         end
 
-        if result.body ~= data then
+        if data ~= nil and result.body ~= data then
             report_data_table["status"] = "failed"
             report_data_table["msg"] = string.format("body [%s] is not [%s]", result.body, data)
             return
@@ -105,9 +109,12 @@ function http_probe(input_table, report_data_table)
 
     end
 
-    if input_table["expect"] ~= nil then
+    local expect = input_table["expect"]
+    if  expect ~= nil and not is_table_empty(expect) then
+        print("check_expect")
         check_expect()
     else
+        print("no check_expect")
         -- report code, body, headers
         report_data_table["code"] = result.code
         report_data_table["headers"] = result.headers
@@ -186,34 +193,25 @@ function sock(proto, input_table, report_data_table)
             data = decoded
         end
 
-        -- read #data bytes; 注意：readall 会造成read超时。
-        local result, err = conn:read(#data)
-        if err then
-            report_data_table["status"] = "failed"
-            report_data_table["msg"] = string.format("read failed:%s", err)
-            return
-        end
-
-        if result ~= data then
-            report_data_table["status"] = "failed"
-            report_data_table["msg"] = string.format("body [%s] is not [%s]", result.body, data)
-            return
-        end
-
-        -- check headers
-        local headers = expect["headers"]
-        if headers ~= nil then
-            local ok, msg = check_table(headers, result.headers)
-            if not ok then
+        if data ~= nil then
+            -- read #data bytes; 注意：readall 会造成read超时。
+            local result, err = conn:read(#data)
+            if err then
                 report_data_table["status"] = "failed"
-                report_data_table["msg"] = msg
+                report_data_table["msg"] = string.format("read failed:%s", err)
+                return
+            end
+
+            if result ~= data then
+                report_data_table["status"] = "failed"
+                report_data_table["msg"] = string.format("body [%s] is not [%s]", result.body, data)
                 return
             end
         end
-
     end
 
-    if input_table["expect"] ~= nil then
+    local expect = input_table["expect"]
+    if  expect ~= nil and not is_table_empty(expect) then
         check_expect()
     end
 
@@ -227,12 +225,15 @@ local process_func = {
 }
 
 function main()
+    print( "script dir: " .. ipes_script_dir())
+
     -- 获取输入数据
     local input_table = ipes_input()
 
     local probe_type = input_table["type"]
     local task_id = input_table["task_id"]
-    local meta = input_table["lambda_meta"]
+    local lambda_meta = input_table["lambda_meta"]
+    local meta = input_table["meta"]
 
     -- call process function
     if process_func[probe_type] == nil then
@@ -248,10 +249,12 @@ function main()
     local report_data_table = {
         id = task_id,
         status = "ok",
-        lambda_meta = meta,
-        msg = ""
+        lambda_meta = lambda_meta,
+        msg = "",
+        meta = meta
     }
 
+    -- printTable(report_data_table)
 
     local begin = time.unix()
     local ok, err = pcall(func, input_table, report_data_table)
@@ -269,8 +272,11 @@ function main()
     local result, err = json.encode(report_data_table)
     assert(not err, err)
 
-    ipes_report("http", "http://my", "hi")
-    ipes_report("kafka", "my", "test", "", "you")
+    -- local err = ipes_report("kafka", "common", "ipes-test", "", result)
+    -- if err ~= nil then
+    --     print("report err: "..err)
+    --     return
+    -- end
 
     local err = ipes_report(result)
     if err ~= nil then

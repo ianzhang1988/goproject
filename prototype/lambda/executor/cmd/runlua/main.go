@@ -409,7 +409,7 @@ func doJob() {
 		MinimizeStackMemory: true,
 		CallStackSize:       64,
 	})
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 9999*time.Second)
 	L.SetContext(ctx)
 	defer cancel()
 	defer L.Close()
