@@ -33,28 +33,35 @@ func ConsumNoLimit(ch chan uint64, chout chan uint64, lim *Limiter) {
 }
 
 func ConsumWithLimitWait(ch chan uint64, chout chan uint64, lim *Limiter) {
-
+	num := 1
 	// 100k ok 200k -> 800k
 	for {
-		lim.Wait(context.Background())
+		lim.WaitN(context.Background(), num)
 		// if err != nil { // never
 		// 	fmt.Println(err)
 		// 	continue
 		// }
-		chout <- <-ch
+		for i := 0; i < num; i++ {
+			chout <- <-ch
+		}
 	}
 }
 
 func ConsumWithLimitDelay(ch chan uint64, chout chan uint64, lim *Limiter) {
 	// below 100000 is good, 200000 double
+	num := 1
 	for {
-		n := lim.Reserve()
+		n := lim.ReserveN(time.Now(), num)
 		if !n.OK() {
+			fmt.Println("Reserve failed")
+			// time.Sleep(n.Delay())
 			continue
 		}
 
 		time.Sleep(n.Delay())
-		chout <- <-ch
+		for i := 0; i < num; i++ {
+			chout <- <-ch
+		}
 	}
 }
 
@@ -93,7 +100,7 @@ func main() {
 	ch2 := make(chan uint64, 100)
 	// 也许把rate limiter实现在Produce才是对的。现在看到的limiter是线程安全的，但是并不适用并行限制。
 	go Produce(ch)
-	lim := NewLimiter(1000000.0, 1000)
+	lim := NewLimiter(500000.0, 10000)
 	for i := 0; i < 100; i++ {
 		// go ConsumNoLimit(ch, ch2, lim)
 		// go ConsumWithLimit(ch, ch2, lim)

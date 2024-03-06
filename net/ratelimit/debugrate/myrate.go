@@ -3,7 +3,7 @@
 // license that can be found in the LICENSE file.
 
 // Package rate provides a rate limiter.
-package main
+package debugrate
 
 import (
 	"context"
@@ -63,6 +63,13 @@ type Limiter struct {
 	last time.Time
 	// lastEvent is the latest time of a rate-limited event (past or future)
 	lastEvent time.Time
+
+	counter     uint64
+	lastCounter uint64
+	du          time.Duration
+	alltokens   float64
+	alldelta    float64
+	lastCTime   time.Time
 }
 
 // Limit returns the maximum overall event rate.
@@ -358,15 +365,65 @@ func (lim *Limiter) reserveN(t time.Time, n int, maxFutureReserve time.Duration)
 		}
 	}
 
-	t, tokens := lim.advance(t)
+	// t, tokens := lim.advance(t)
+
+	// timeBefore := false
+
+	// test advance
+	last := lim.last
+	if t.Before(last) {
+		last = t
+
+		// timeBefore = true
+
+		// t是之前的时间，但是可能后面的计算是ok的，然后把lim的时间提前了。
+		return Reservation{
+			ok:    false,
+			lim:   lim,
+			limit: lim.limit,
+		}
+	}
+
+	// Calculate the new number of tokens, due to time that passed.
+	elapsed := t.Sub(last)
+
+	delta := lim.limit.tokensFromDuration(elapsed)
+
+	tokens := lim.tokens + delta
+	if burst := float64(lim.burst); tokens > burst {
+		tokens = burst
+	}
+	// end test advance
 
 	// Calculate the remaining number of tokens resulting from the request.
 	tokens -= float64(n)
+
+	// if tokens > 0 {
+	// 	lim.counter += 1
+	// 	du := t.Sub(lim.lastCTime)
+	// 	if du > time.Second {
+	// 		fmt.Println("all :", lim.counter, du)
+	// 		lim.counter = 0
+	// 		lim.lastCTime = t
+	// 	}
+	// }
 
 	// Calculate the wait duration
 	var waitDuration time.Duration
 	if tokens < 0 {
 		waitDuration = lim.limit.durationFromTokens(-tokens)
+		// if waitDuration <= maxFutureReserve {
+
+		// 	// fmt.Println("shit!", tokens)
+
+		// 	lim.counter += 1
+		// 	du := t.Sub(lim.lastCTime)
+		// 	if du > time.Second {
+		// 		fmt.Println("shit! :", lim.counter, du)
+		// 		lim.counter = 0
+		// 		lim.lastCTime = t
+		// 	}
+		// }
 	}
 
 	// Decide result
@@ -386,6 +443,23 @@ func (lim *Limiter) reserveN(t time.Time, n int, maxFutureReserve time.Duration)
 		lim.last = t
 		lim.tokens = tokens
 		lim.lastEvent = r.timeToAct
+
+		lim.counter += 1
+		lim.alltokens += (tokens + 1 - lim.tokens)
+		lim.alldelta += delta
+		du := t.Sub(lim.lastCTime)
+		if du > time.Second {
+			fmt.Println("reserve :", lim.counter, lim.alltokens, lim.alldelta/float64(lim.limit), du)
+			lim.alldelta = 0
+			lim.counter = 0
+			lim.alltokens = 0
+			lim.lastCTime = t
+		}
+
+		// if timeBefore {
+		// 	fmt.Println("shit")
+		// }
+
 	}
 
 	return r
@@ -397,14 +471,16 @@ func (lim *Limiter) reserveN(t time.Time, n int, maxFutureReserve time.Duration)
 func (lim *Limiter) advance(t time.Time) (newT time.Time, newTokens float64) {
 	last := lim.last
 	if t.Before(last) {
-		// last = t
-		return last, lim.tokens // fix https://github.com/golang/go/issues/65508
-		// same as t = last
+		last = t
 	}
 
 	// Calculate the new number of tokens, due to time that passed.
 	elapsed := t.Sub(last)
+
 	delta := lim.limit.tokensFromDuration(elapsed)
+	// if delta > 1000 {
+	// 	fmt.Println("delta > n ", elapsed)
+	// }
 	tokens := lim.tokens + delta
 	if burst := float64(lim.burst); tokens > burst {
 		tokens = burst
