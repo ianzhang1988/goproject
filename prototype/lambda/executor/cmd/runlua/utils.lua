@@ -11,6 +11,15 @@ function printTable(tbl, indent)
     end
 end
 
+function copyTable(tbl)
+
+    copy = {}
+    for key, value in pairs(tbl) do
+        copy[key] = value
+    end
+    return copy
+end
 return {
-    printTable = printTable
+    printTable = printTable,
+    copyTable = copyTable
 }

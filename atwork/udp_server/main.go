@@ -65,26 +65,28 @@ func handle(conn *kcp.UDPSession, out chan MyMsg) {
 	for {
 		conn.SetDeadline(time.Now().Add(11 * time.Minute))
 
+		// fmt.Println("d 1")
 		n, err := conn.Read(buf)
 		if err != nil {
 			fmt.Println(err)
 			break
 		}
+		// fmt.Println("d 2")
 
 		msg := MyMsg{}
 		err = json.Unmarshal(buf[:n], &msg)
 		if err != nil {
-			// fmt.Printf("json err: %s\n", err)
+			fmt.Printf("json err: %s\n", err)
 			continue
 		}
 
 		// fmt.Println("client counter: ", msg.Counter)
 
-		_, err = conn.Write([]byte("OK"))
-		if err != nil {
-			fmt.Println(err)
-			break
-		}
+		// _, err = conn.Write([]byte(fmt.Sprintf("OK %d", msg.Counter)))
+		// if err != nil {
+		// 	fmt.Println(err)
+		// 	break
+		// }
 
 		out <- msg
 	}
@@ -132,9 +134,9 @@ func main() {
 	flag.StringVar(&id, "id", "test", "")
 	flag.Parse()
 
-	go httpServer()
+	// go httpServer()
 
-	key := pbkdf2.Key([]byte("zhangyang"), []byte("zhangyang salt"), 1024, 16, sha1.New)
+	key := pbkdf2.Key([]byte("abc"), []byte("abc salt"), 1024, 16, sha1.New)
 	block, _ := kcp.NewAESBlockCrypt(key)
 
 	counterChan := make(chan MyMsg, 10000)
@@ -147,6 +149,8 @@ func main() {
 	if listener, err := kcp.ListenWithOptions("0.0.0.0:9203", block, 10, 3); err == nil {
 		for {
 			s, err := listener.AcceptKCP()
+			s.SetNoDelay(1, 50, 2, 1)
+			s.SetWindowSize(10000, 10000)
 			if err != nil {
 				panic(err)
 			}

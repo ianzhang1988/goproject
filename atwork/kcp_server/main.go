@@ -100,7 +100,7 @@ func handle(conn *kcp.UDPSession) {
 
 func server() {
 
-	key := pbkdf2.Key([]byte("zhangyang"), []byte("zhangyang salt"), 1024, 16, sha1.New)
+	key := pbkdf2.Key([]byte("abc"), []byte("abc salt"), 1024, 16, sha1.New)
 	block, _ := kcp.NewAESBlockCrypt(key)
 
 	if listener, err := kcp.ListenWithOptions("0.0.0.0:9203", block, 10, 3); err == nil {

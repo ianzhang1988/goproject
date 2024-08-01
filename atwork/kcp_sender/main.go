@@ -2,6 +2,7 @@ package main
 
 import (
 	"crypto/sha1"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"math/rand"
@@ -33,16 +34,63 @@ func StringWithCharset(length int, charset string) string {
 	return string(b)
 }
 
-func client() {
+func addChan(ch chan []byte, data []byte, sync bool) bool {
+	if sync {
+		ch <- data
+		return true
+	} else {
+		select {
+		case ch <- data:
+			return true
+		default:
+			return false
+		}
+	}
+}
+
+func readChan(ch chan []byte, data *[]byte, sync bool) bool {
+	if sync {
+		*data = <-ch
+		return true
+	} else {
+		select {
+		case *data = <-ch:
+			return true
+		default:
+			return false
+		}
+	}
+}
+
+func genData(input chan []byte) {
+	counter := 0
 	dummyData := StringWithCharset(900, charset)
 	format := `{"counter":%d, "id":"%s", "data":"%s"}`
 
-	key := pbkdf2.Key([]byte("zhangyang"), []byte("zhangyang salt"), 1024, 16, sha1.New)
+	for {
+		counter += 1
+		data := fmt.Sprintf(format, counter, "id", dummyData)
+		dataByte := []byte(data)
+		addChan(input, dataByte, true)
+	}
+
+}
+
+func client() {
+	// dummyData := StringWithCharset(900, charset)
+	// format := `{"counter":%d, "id":"%s", "data":"%s"}`
+
+	key := pbkdf2.Key([]byte("abc"), []byte("abc salt"), 1024, 16, sha1.New)
 	block, _ := kcp.NewAESBlockCrypt(key)
 
 	var sess *kcp.UDPSession
 	var err error
 	var conn *net.UDPConn
+
+	input := make(chan []byte, 1000)
+	retrans := make(chan []byte, worker)
+
+	go genData(input)
 
 	for {
 
@@ -121,24 +169,36 @@ func client() {
 
 					for {
 
-						localCnt := atomic.LoadInt32(&counter)
+						var data []byte
+						if ok := readChan(retrans, &data, false); !ok {
+							readChan(input, &data, true)
+						}
+
+						msg := map[string]interface{}{}
+						json.Unmarshal(data, &msg)
+						cnt := int(msg["counter"].(float64))
+
+						// localCnt := atomic.LoadInt32(&counter)
 						stream.SetDeadline(time.Now().Add(10 * time.Second))
 						// Stream implements io.ReadWriteCloser
-						data := fmt.Sprintf(format, localCnt, "id", dummyData)
+						// data := fmt.Sprintf(format, localCnt, "id", dummyData)
+
 						_, err = stream.Write([]byte(data))
 						if err != nil {
 							fmt.Println("stream.Write: ", err)
+							addChan(retrans, data, true)
 							break
 						}
 						buf := make([]byte, 100)
 						n, err := stream.Read(buf)
 						if err != nil {
 							fmt.Println("stream.Read: ", err)
+							addChan(retrans, data, true)
 							break
 						}
 
-						if string(buf[:n]) != fmt.Sprintf("%d", localCnt) {
-							fmt.Printf("counter miss expect:%s, actual:%s\n", fmt.Sprintf("%d", localCnt), string(buf[:n]))
+						if string(buf[:n]) != fmt.Sprintf("%d", cnt) {
+							fmt.Printf("counter miss expect:%s, actual:%s\n", fmt.Sprintf("%d", cnt), string(buf[:n]))
 						}
 
 						atomic.AddInt32(&counter, 1)

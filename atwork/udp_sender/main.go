@@ -10,6 +10,8 @@ import (
 	"math/rand"
 	"net/http"
 	"os"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -33,10 +35,17 @@ var (
 	server     string
 	messageNum = 7000
 	// messageNum = 7
-	id         string
-	httpServer string
-	interval   int
-	kcpTimeout int
+	id              string
+	httpServer      string
+	interval        int
+	kcpTimeout      int
+	data            int
+	parity          int
+	nodelay         string
+	nodelayInt      int
+	nodelayInterval int
+	nodelayResend   int
+	nodelayNc       int
 )
 
 func httpSend() {
@@ -134,8 +143,29 @@ func main() {
 	flag.IntVar(&interval, "n", 300, "interval")
 	flag.IntVar(&kcpTimeout, "kt", 3, "kcp timeout")
 	flag.IntVar(&messageNum, "msg", 7000, "msg num")
+	flag.IntVar(&data, "data", 10, "data num")
+	flag.IntVar(&parity, "parity", 3, "parity num")
+	flag.StringVar(&nodelay, "nodelay", "-1:-1:-1:-1", "parity num")
 
 	flag.Parse()
+
+	if nodelay != "" {
+		parts := strings.Split(nodelay, ":")
+		if len(parts) == 4 {
+			nodelayInt, _ = strconv.Atoi(parts[0])
+			nodelayInterval, _ = strconv.Atoi(parts[1])
+			nodelayResend, _ = strconv.Atoi(parts[2])
+			nodelayNc, _ = strconv.Atoi(parts[3])
+			logrus.WithFields(logrus.Fields{
+				"nodelayInt":      nodelayInt,
+				"nodelayInterval": nodelayInterval,
+				"nodelayResend":   nodelayResend,
+				"nodelayNc":       nodelayNc,
+			}).Info("nodelay set")
+		} else {
+			logrus.Error("parse nodelay err")
+		}
+	}
 
 	initLog()
 
@@ -148,10 +178,13 @@ func main() {
 
 	counter := 0
 
-	key := pbkdf2.Key([]byte("zhangyang"), []byte("zhangyang salt"), 1024, 16, sha1.New)
+	key := pbkdf2.Key([]byte("abc"), []byte("abc salt"), 1024, 16, sha1.New)
 	block, _ := kcp.NewAESBlockCrypt(key)
 
-	if sess, err := kcp.DialWithOptions(server, block, 10, 3); err == nil {
+	if sess, err := kcp.DialWithOptions(server, block, data, parity); err == nil {
+		sess.SetNoDelay(nodelayInt, nodelayInterval, nodelayResend, nodelayNc)
+		sess.SetWindowSize(10000, 10000)
+
 		// fmt.Println("local: ", sess.LocalAddr())
 		logrus.WithFields(logrus.Fields{
 			"addr": sess.LocalAddr(),
@@ -170,25 +203,25 @@ func main() {
 
 				data := fmt.Sprintf(format, counter, id, dummyData)
 
-				buf := make([]byte, 10)
+				// buf := make([]byte, 10)
 				//fmt.Println("sent:", data)
 				sess.SetDeadline(time.Now().Add(time.Duration(kcpTimeout) * time.Second))
 				if _, err = sess.Write([]byte(data)); err == nil {
-					if n, err := sess.Read(buf); err == nil {
-						// fmt.Println("recv:", string(buf))
-						if string(buf[:n]) != "OK" {
-							logrus.WithFields(logrus.Fields{
-								"buf": string(buf[:n]),
-							}).Info("read not OK")
-						}
-					} else {
-						// fmt.Println("read err: ", err)
-						logrus.WithFields(logrus.Fields{
-							"err": err,
-						}).Info("read")
-						failed = true
+					// if n, err := sess.Read(buf); err == nil {
+					// 	// fmt.Println("recv:", string(buf))
+					// 	if string(buf[:n]) != "OK" {
+					// 		logrus.WithFields(logrus.Fields{
+					// 			"buf": string(buf[:n]),
+					// 		}).Info("read not OK")
+					// 	}
+					// } else {
+					// 	// fmt.Println("read err: ", err)
+					// 	logrus.WithFields(logrus.Fields{
+					// 		"err": err,
+					// 	}).Info("read")
+					// 	failed = true
 
-					}
+					// }
 				} else {
 					// fmt.Println("write err:", err)
 					logrus.WithFields(logrus.Fields{
@@ -202,6 +235,8 @@ func main() {
 
 					for {
 						sess, err = kcp.DialWithOptions(server, block, 10, 3)
+						sess.SetNoDelay(nodelayInt, nodelayInterval, nodelayResend, nodelayNc)
+						sess.SetWindowSize(10000, 10000)
 						if err != nil {
 							// fmt.Println("redial err: ", err)
 							logrus.WithFields(logrus.Fields{

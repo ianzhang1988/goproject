@@ -4,6 +4,7 @@ local http = require("http")
 local base64 = require("base64")
 local tcp = require("tcp")
 local time = require("time")
+local net = require("net")
 
 -- lua模块(同目录下的另一个lua文件)
 local utils = require("utils")
@@ -30,9 +31,42 @@ function check_table(expect, examined)
     return true, ""
 end
 
+function dns_check()
+    local domain_list = {
+        "www.baidu.com",
+        "www.qq.com",
+        "www.alibaba.com",
+    }
+
+    local ok = false
+    for _, domain in ipairs(domain_list) do
+        addr, err = net.dnslookup(domain)
+        if err ~= nil then
+            goto continue
+        end
+        if #addr == 0 then
+            goto continue
+        end
+       
+        ok = true
+        print(domain .. ": ".. addr[1])
+
+        -- gopher lua bug
+        if ok then
+            break
+        end
+
+        ::continue::
+    end
+
+    return ok
+end
+
 function http_probe(input_table, report_data_table)
 
     local target = input_table["target"]
+    local if_statistics = input_table["statistics"]
+    local if_target_ipport = input_table["target_ipport"]
     local timeout = target["timeout"]
     local method = target["method"]
     local url = target["url"]
@@ -40,11 +74,27 @@ function http_probe(input_table, report_data_table)
     local headers = target["headers"]
     local basic_auth = target["basic_auth"]
 
-    local client = http.client({
-        timeout = timeout,
-        insecure_ssl = true,
+    if timeout == nil then
+        timeout = 5
+    end
 
-    })
+    local http_config = {
+        timeout = timeout,
+        insecure_ssl = true, 
+    }
+    
+    local sip_dial
+    if if_target_ipport then
+        local err
+        sip_dial, err = http.custom_dial("target_ipport", timeout)
+        if err ~= nil then
+            print("custom dial err:", err)
+        else
+            http_config["dial_context"] = sip_dial
+        end
+    end
+
+    local client = http.client(http_config)
 
     local request
     if body == nil or body == "" then
@@ -52,9 +102,17 @@ function http_probe(input_table, report_data_table)
     else
         request = http.request(method, url, body)
     end
+
+    if if_statistics then
+        request, statistics = http.attach_statistics(request)
+    end
     
     for k, v in pairs(headers or {}) do
-        request:header_set(k, v)
+        if string.lower(k) == "host" then
+            request:set_host(v)
+        else
+            request:header_set(k, v)
+        end
     end
 
     if basic_auth ~= nil then
@@ -62,6 +120,16 @@ function http_probe(input_table, report_data_table)
     end
 
     local result, err = client:do_request(request)
+    
+    -- try get even when err occur
+    if if_statistics then
+        report_data_table["statistics"] = http.get_statistics(statistics)
+    end
+    if if_target_ipport and sip_dial then
+        report_data_table["target_ipport"] = http.get_source_ipport(sip_dial)
+    end
+    
+    -- err from do_request
     if err then
         report_data_table["status"] = "failed"
         report_data_table["msg"] = string.format("request failed:%s", err)
@@ -74,7 +142,7 @@ function http_probe(input_table, report_data_table)
         -- check code
         if not (result.code == expect["code"] ) then
             report_data_table["status"] = "failed"
-            report_data_table["msg"] = string.format("code [%s] in not [%s]", result.code, expect["code"])
+            report_data_table["msg"] = string.format("code [%s] in not [%s], body:[%s]", result.code, expect["code"], result.body)
             return
         end
     
@@ -111,10 +179,8 @@ function http_probe(input_table, report_data_table)
 
     local expect = input_table["expect"]
     if  expect ~= nil and not is_table_empty(expect) then
-        print("check_expect")
         check_expect()
     else
-        print("no check_expect")
         -- report code, body, headers
         report_data_table["code"] = result.code
         report_data_table["headers"] = result.headers
@@ -136,7 +202,6 @@ function udp_probe(input_table, report_data_table)
 end
 
 function sock(proto, input_table, report_data_table)
-    print(proto)
     local target = input_table["target"]
 
     local url = target["url"]
@@ -153,7 +218,6 @@ function sock(proto, input_table, report_data_table)
 
     local conn, err = tcp.open(url, dial_timeout, proto)
     if err then
-        print(err)
         report_data_table["status"] = "failed"
         report_data_table["msg"] = string.format("dail failed:%s", err)
         return
@@ -234,6 +298,16 @@ function main()
     local task_id = input_table["task_id"]
     local lambda_meta = input_table["lambda_meta"]
     local meta = input_table["meta"]
+    local if_check_dns = input_table["dns_check"]
+    local retry = input_table["retry"]
+
+    if if_check_dns == nil then
+        if_check_dns = true
+    end
+    
+    if retry == nil then
+        retry = 3
+    end
 
     -- call process function
     if process_func[probe_type] == nil then
@@ -254,19 +328,48 @@ function main()
         meta = meta
     }
 
+    local dns_ok
+    local dns_begin
+    local dns_stop
+    if if_check_dns == false then
+        dns_ok = true
+    else
+        print("check dns")
+        dns_begin = time.unix()
+        dns_ok = dns_check()
+        dns_stop = time.unix()
+    end
+
     -- printTable(report_data_table)
 
-    local begin = time.unix()
-    local ok, err = pcall(func, input_table, report_data_table)
-    local stop = time.unix()
-    
-    report_data_table["time_used"] = stop - begin
+    if dns_ok then
 
-    -- error handler
-    if not ok then
+        local begin = time.unix()
+        local ok = false
+        for i = 1, retry do 
+            ok, err = pcall(func, input_table, report_data_table)
+            local status_ok = report_data_table["status"]
+            if ok and status_ok == "ok" then
+                break
+            end
+            print("retry: ", i)
+            time.sleep(1)
+        end
+        local stop = time.unix()
+        
+        report_data_table["time_used"] = stop - begin
+        -- error handler
+        if not ok then
+            report_data_table["status"] = "err"
+            report_data_table["msg"] = err
+        end
+    else
+        report_data_table["time_used"] = dns_stop - dns_begin
+        -- dns is faulty, skip this device
         report_data_table["status"] = "err"
-        report_data_table["msg"] = err
+        report_data_table["msg"] = "faulty dns"
     end
+
 
     -- report result
     local result, err = json.encode(report_data_table)
