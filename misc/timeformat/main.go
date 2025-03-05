@@ -23,4 +23,8 @@ func main() {
 	a = &A{}
 	json.Unmarshal(data, a)
 	fmt.Println(a.Time.Format(time.RFC3339Nano))
+
+	time1 := time.Date(2023, 1, 1, 10, 0, 0, 0, time.UTC)
+	time2 := time.Date(2023, 1, 1, 9, 0, 0, 0, time.UTC)
+	fmt.Println("time diff: ", time2.Sub(time1).Hours())
 }

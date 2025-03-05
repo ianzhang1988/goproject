@@ -98,6 +98,7 @@ function http_probe(input_table, report_data_table)
 
     local request
     if body == nil or body == "" then
+        print("-----1 "..method..url)
         request = http.request(method, url)
     else
         request = http.request(method, url, body)
@@ -282,10 +283,70 @@ function sock(proto, input_table, report_data_table)
     conn:close()
 end
 
+function dns_lookup(input_table, report_data_table)
+    local target = input_table["target"]
+
+    local url = target["url"]
+    local timeout = target["timeout"]
+
+    if timeout == nil then
+        timeout = 3 
+    end
+
+    local addr, err = net.dnslookup(url, timeout)
+    if err then
+        report_data_table["status"] = "failed"
+        report_data_table["msg"] = string.format("dns lookup failed:%s", err)
+        return
+    end
+
+    report_data_table["data"] = {
+        domain = url,
+        addr = addr,
+    }
+
+end
+
+function ping(input_table, report_data_table)
+    local target = input_table["target"]
+    local url = target["url"]
+
+    local count = 3
+    local params = input_table["params"]
+    if params ~= nil then
+        local num_str = params["count"]
+        if num_str ~= nil then
+            local num = tonumber(num_str)
+            if num ~= nil then
+                count = num
+            end
+        end
+    end
+
+    if count > 3 then
+        count =3
+    end
+
+    local stats, err = net.ping(url, count)
+    if err then
+        report_data_table["status"] = "failed"
+        report_data_table["msg"] = string.format("dns lookup failed:%s", err)
+        return
+    end
+
+    report_data_table["data"] = stats
+    if stats["pkt_recv"] < 1 then
+        report_data_table["status"] = "failed"
+    end
+
+end
+
 local process_func = {
     http = http_probe,
     tcp = tcp_probe,
     udp = udp_probe,
+    dns = dns_lookup,
+    ping = ping,
 }
 
 function main()
@@ -374,12 +435,6 @@ function main()
     -- report result
     local result, err = json.encode(report_data_table)
     assert(not err, err)
-
-    -- local err = ipes_report("kafka", "common", "ipes-test", "", result)
-    -- if err ~= nil then
-    --     print("report err: "..err)
-    --     return
-    -- end
 
     local err = ipes_report(result)
     if err ~= nil then
